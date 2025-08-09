@@ -15,6 +15,9 @@ export default function PriceChart({ data, height = 380, resetKey }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const ma7Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const ma25Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const ma99Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const userInteractedRef = useRef<boolean>(false);
   const updatingRef = useRef<boolean>(false);
   const hasFitOnceRef = useRef<boolean>(false);
@@ -38,6 +41,28 @@ export default function PriceChart({ data, height = 380, resetKey }: Props) {
     );
   };
 
+  const computeSMA = (values: number[], period: number): (number | null)[] => {
+    const out: (number | null)[] = new Array(values.length).fill(null);
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) {
+      sum += values[i];
+      if (i >= period) sum -= values[i - period];
+      if (i >= period - 1) out[i] = sum / period;
+    }
+    return out;
+  };
+
+  const timesRef = useRef<number[]>([]);
+  const maValsRef = useRef<{
+    ma7: (number | null)[];
+    ma25: (number | null)[];
+    ma99: (number | null)[];
+  }>({
+    ma7: [],
+    ma25: [],
+    ma99: [],
+  });
+
   // Initialize chart once
   useEffect(() => {
     if (!containerRef.current || chartRef.current) return;
@@ -58,8 +83,29 @@ export default function PriceChart({ data, height = 380, resetKey }: Props) {
       wickUpColor: "#22c55e",
       wickDownColor: "#ef4444",
     });
+    const line7 = chart.addLineSeries({
+      color: "#f59e0b",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    const line25 = chart.addLineSeries({
+      color: "#e879f9",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    const line99 = chart.addLineSeries({
+      color: "#8b5cf6",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
     chartRef.current = chart;
     seriesRef.current = series;
+    ma7Ref.current = line7;
+    ma25Ref.current = line25;
+    ma99Ref.current = line99;
     const ts = chart.timeScale();
     const onRangeChange = () => {
       if (!updatingRef.current) userInteractedRef.current = true;
@@ -96,6 +142,9 @@ export default function PriceChart({ data, height = 380, resetKey }: Props) {
       } catch {}
       chartRef.current = null;
       seriesRef.current = null;
+      ma7Ref.current = null;
+      ma25Ref.current = null;
+      ma99Ref.current = null;
       userInteractedRef.current = false;
       hasFitOnceRef.current = false;
       window.removeEventListener("resize", onWindowResize);
@@ -121,6 +170,21 @@ export default function PriceChart({ data, height = 380, resetKey }: Props) {
     }));
     updatingRef.current = true;
     seriesRef.current.setData(candles);
+    // Compute and set MA lines
+    const closes = data.map((d) => d.close);
+    const times = data.map((d) => Math.floor(new Date(d.open_time).getTime() / 1000));
+    timesRef.current = times;
+    const ma7 = computeSMA(closes, 7);
+    const ma25 = computeSMA(closes, 25);
+    const ma99 = computeSMA(closes, 99);
+    maValsRef.current = { ma7, ma25, ma99 };
+    const toLine = (arr: (number | null)[]) =>
+      times
+        .map((t, i) => (arr[i] != null ? { time: t as Time, value: arr[i]! } : null))
+        .filter(Boolean) as { time: Time; value: number }[];
+    if (ma7Ref.current) ma7Ref.current.setData(toLine(ma7));
+    if (ma25Ref.current) ma25Ref.current.setData(toLine(ma25));
+    if (ma99Ref.current) ma99Ref.current.setData(toLine(ma99));
     updatingRef.current = false;
     if (!hasFitOnceRef.current) {
       chartRef.current?.timeScale().fitContent();
@@ -197,6 +261,21 @@ export default function PriceChart({ data, height = 380, resetKey }: Props) {
   const valStyle: React.CSSProperties = { color: "#e5e7eb", marginRight: 8 };
   const upStyle: React.CSSProperties = { color: "#22c55e", marginRight: 8 };
   const downStyle: React.CSSProperties = { color: "#ef4444", marginRight: 8 };
+  const indicatorStyle: React.CSSProperties = {
+    position: "absolute",
+    left: 8,
+    top: 36,
+    background: "rgba(0,0,0,0.25)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 8,
+    padding: "4px 8px",
+    color: "#e5e7eb",
+    fontSize: 12,
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    zIndex: 11,
+  };
 
   return (
     <div ref={wrapperRef} style={wrapperStyle}>
@@ -231,6 +310,13 @@ export default function PriceChart({ data, height = 380, resetKey }: Props) {
         const changePct = cndl.open !== 0 ? ((cndl.close - cndl.open) / cndl.open) * 100 : 0;
         const ampPct = cndl.open !== 0 ? ((cndl.high - cndl.low) / cndl.open) * 100 : 0;
         const changeStyle = changePct >= 0 ? upStyle : downStyle;
+        // find MA values at hover or last index
+        let idx = -1;
+        if (hover && hover.time) idx = timesRef.current.indexOf(hover.time);
+        else if (timesRef.current.length) idx = timesRef.current.length - 1;
+        const ma7v = idx >= 0 ? maValsRef.current.ma7[idx] : null;
+        const ma25v = idx >= 0 ? maValsRef.current.ma25[idx] : null;
+        const ma99v = idx >= 0 ? maValsRef.current.ma99[idx] : null;
         return (
           <div style={headerStyle}>
             <span style={valStyle}>{new Date(cndl.timeMs).toLocaleString()}</span>
@@ -246,6 +332,32 @@ export default function PriceChart({ data, height = 380, resetKey }: Props) {
             <span style={changeStyle}>{changePct.toFixed(2)}%</span>
             <span style={labelStyle}>AMPLITUDE:</span>
             <span style={valStyle}>{ampPct.toFixed(2)}%</span>
+          </div>
+        );
+      })()}
+      {(() => {
+        // Render MA labels on a separate bar below the header
+        let idx = -1;
+        if (hover && hover.time) idx = timesRef.current.indexOf(hover.time);
+        else if (timesRef.current.length) idx = timesRef.current.length - 1;
+        const ma7v = idx >= 0 ? maValsRef.current.ma7[idx] : null;
+        const ma25v = idx >= 0 ? maValsRef.current.ma25[idx] : null;
+        const ma99v = idx >= 0 ? maValsRef.current.ma99[idx] : null;
+        if (ma7v == null && ma25v == null && ma99v == null) return null;
+        return (
+          <div style={indicatorStyle}>
+            <span style={labelStyle}>MA(7):</span>
+            <span style={{ ...valStyle, color: "#f59e0b" }}>
+              {ma7v != null ? ma7v.toFixed(2) : "-"}
+            </span>
+            <span style={labelStyle}>MA(25):</span>
+            <span style={{ ...valStyle, color: "#e879f9" }}>
+              {ma25v != null ? ma25v.toFixed(2) : "-"}
+            </span>
+            <span style={labelStyle}>MA(99):</span>
+            <span style={{ ...valStyle, color: "#8b5cf6" }}>
+              {ma99v != null ? ma99v.toFixed(2) : "-"}
+            </span>
           </div>
         );
       })()}

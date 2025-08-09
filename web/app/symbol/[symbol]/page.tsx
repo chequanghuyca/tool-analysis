@@ -31,6 +31,17 @@ export default function SymbolDetail({ params }: { params: { symbol: string } })
   const [chartHeight, setChartHeight] = useState<number>(380);
   const [adviceObj, setAdviceObj] = useState<any | null>(null);
 
+  // Dynamic document title: SYMBOL + last price
+  useEffect(() => {
+    const base = "Crypto Analyzer";
+    const p = realtimePrice ?? signal?.price ?? null;
+    const title = p ? `${symbol} ${p.toLocaleString()} | ${base}` : `${symbol} | ${base}`;
+    if (typeof document !== "undefined") document.title = title;
+    return () => {
+      if (typeof document !== "undefined") document.title = base;
+    };
+  }, [symbol, realtimePrice, signal?.price]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -257,7 +268,9 @@ export default function SymbolDetail({ params }: { params: { symbol: string } })
             <option value='15m'>15m</option>
             <option value='1h'>1h</option>
             <option value='4h'>4h</option>
+            <option value='6h'>6h</option>
             <option value='1d'>1d</option>
+            <option value='1w'>1w</option>
           </select>
         </label>
         <label className='controls__group'>
