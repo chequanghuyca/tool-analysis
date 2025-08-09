@@ -1,0 +1,67 @@
+# flyctl launch added from .gitignore
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.venv
+**/.env
+**/*.log
+**/.mypy_cache
+**/.pytest_cache
+
+# FastAPI/Uvicorn logs
+tmp/crypto-api.log
+
+# Node/Next.js
+**/node_modules
+**/.next
+**/.out
+**/.next-static
+**/.DS_Store
+
+# Bun
+**/bun.lockb
+
+# Env files
+**/web/.env.local
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+
+# Editor/OS
+**/.vscode
+**/.idea
+**/*.swp
+**/Thumbs.db
+
+
+
+# flyctl launch added from web/.gitignore
+# Logs
+web/**/logs
+web/**/*.log
+web/**/npm-debug.log*
+web/**/yarn-debug.log*
+web/**/yarn-error.log*
+web/**/pnpm-debug.log*
+web/**/lerna-debug.log*
+web/**/bun.lockb
+
+web/**/node_modules
+web/**/dist
+web/**/dist-ssr
+web/**/*.local
+
+# Editor directories and files
+web/**/.vscode/*
+!web/**/.vscode/settings.json
+!web/**/.vscode/extensions.json
+web/**/.idea
+web/**/.DS_Store
+web/**/*.suo
+web/**/*.ntvs*
+web/**/*.njsproj
+web/**/*.sln
+web/**/*.sw?
+fly.toml
