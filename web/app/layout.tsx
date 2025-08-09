@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <header className='layout__header'>
             <Link href='/' className='layout__brand' aria-label='Home'>
               <Image src='/favicon.ico' alt='' width={24} height={24} priority />
-              <h1 className='layout__title'>Huyche Analyzer</h1>
+              <h1 className='layout__title'>Crypto Analyzer</h1>
             </Link>
           </header>
           <section className='layout__content'>{children}</section>
