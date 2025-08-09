@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+*.log
+.mypy_cache/
+.pytest_cache/
+
+# FastAPI/Uvicorn logs
+/tmp/crypto-api.log
+
+# Node/Next.js
+node_modules/
+.next/
+.out/
+.next-static/
+.DS_Store
+
+# Bun
+bun.lockb
+
+# Env files
+web/.env.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor/OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+
+
