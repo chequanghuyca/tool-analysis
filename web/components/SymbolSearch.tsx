@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchSymbols, type SymbolItem } from "@/lib/api";
+import Skeleton from "@/components/Skeleton";
 
 export default function SymbolSearch() {
   const [q, setQ] = useState("");
@@ -45,18 +46,26 @@ export default function SymbolSearch() {
 
       {error && <div style={{ color: "#ef4444", marginBottom: 12 }}>{error}</div>}
 
-      <div className='search__list'>
-        {symbols.map((s) => (
-          <div key={s.symbol} className='search__item'>
-            <Link className='search__link' href={`/symbol/${s.symbol}`}>
-              <div style={{ fontWeight: 600 }}>{s.symbol}</div>
-              <div style={{ color: "#9ca3af", fontSize: 12 }}>
-                {s.baseAsset} / {s.quoteAsset}
-              </div>
-            </Link>
-          </div>
-        ))}
-      </div>
+      {loading ? (
+        <div className='search__list'>
+          {Array.from({ length: 50 }).map((_, i) => (
+            <Skeleton key={i} height={66} />
+          ))}
+        </div>
+      ) : (
+        <div className='search__list'>
+          {symbols.map((s) => (
+            <div key={s.symbol} className='search__item'>
+              <Link className='search__link' href={`/symbol/${s.symbol}`}>
+                <div style={{ fontWeight: 600 }}>{s.symbol}</div>
+                <div style={{ color: "#9ca3af", fontSize: 12 }}>
+                  {s.baseAsset} / {s.quoteAsset}
+                </div>
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

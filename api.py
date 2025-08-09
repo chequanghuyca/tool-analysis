@@ -14,6 +14,7 @@ from src.ml.features import build_features
 from src.ml.model import LogisticModel
 from src.ml.labeling import triple_barrier_labels
 from src.ml.model_lgbm import LGBMBaseline
+from src.indicators.ta import adx
 
 app = FastAPI(title="Crypto Analyzer API", version="1.0.0")
 
@@ -185,3 +186,112 @@ def ai_signal(
     }
 
 
+@app.get("/ai/advice")
+def ai_advice(
+    symbol: str,
+    interval: str = "1h",
+    limit: int = 1000,
+    htf_interval: str = "4h",
+    horizon: int = 5,
+):
+    df = fetch_klines(symbol=symbol, interval=interval, limit=limit)
+    if df.empty:
+        return {"stance": "Neutral", "conviction": 0, "notes": ["No data"]}
+
+    # HTF trend
+    df_htf = fetch_klines(symbol=symbol, interval=htf_interval, limit=min(500, limit))
+    base = add_indicators(df, ema_fast=20, ema_slow=50, rsi_period=14, bb_period=20, bb_std=2.0, atr_period=14)
+    htf = add_indicators(df_htf, ema_fast=20, ema_slow=50, rsi_period=14, bb_period=20, bb_std=2.0, atr_period=14)
+    htf["adx"] = adx(htf["high"], htf["low"], htf["close"], 14)
+
+    # Ensemble probs
+    feats = build_features(df)
+    close = df["close"].reindex(feats.index)
+    future = close.shift(-horizon)
+    y = (future / close - 1.0).fillna(0.0)
+    y = (y > 0).astype(int).values
+    cutoff = max(100, int(len(feats) * 0.8))
+    X_train = feats.iloc[:cutoff]
+    y_train = y[:cutoff]
+    X_test = feats.iloc[cutoff:]
+    if len(X_train) < 50 or len(X_test) == 0:
+        return {"stance": "Neutral", "conviction": 0, "notes": ["Insufficient data"]}
+    sw = np.linspace(0.2, 1.0, num=len(X_train))
+    model = LogisticModel.fit(X_train, y_train, lr=0.05, epochs=600, sample_weight=sw)
+    prob_up = float(model.predict_proba(X_test.tail(1)).ravel()[0])
+
+    tb = triple_barrier_labels(df.reindex(feats.index), horizon=horizon)
+    tb = tb.iloc[:cutoff]
+    if not tb.empty and tb.abs().sum() > 10:
+        y_tb = tb.replace({-1: 0, 0: 1, 1: 2}).astype(int).values
+        lgbm = LGBMBaseline.fit(X_train, y_tb)
+        probs_mc = lgbm.predict_proba(X_test.tail(1))[0]
+        prob_sell, prob_hold, prob_buy = [float(p) for p in probs_mc]
+    else:
+        prob_buy = prob_up
+        prob_sell = 1 - prob_up
+        prob_hold = 0.0
+
+    htf_last = htf.dropna().iloc[-1]
+    trend_up = htf_last["ema_fast"] > htf_last["ema_slow"] and htf_last["adx"] >= 20
+    trend_down = htf_last["ema_fast"] < htf_last["ema_slow"] and htf_last["adx"] >= 20
+    trend = "Up" if trend_up else ("Down" if trend_down else "Sideways")
+
+    last = base.dropna().iloc[-1]
+    price = float(last["close"]) if not np.isnan(last["close"]) else None
+    atr_val = float(last["atr"]) if not np.isnan(last["atr"]) else None
+
+    lookback = min(60, len(base))
+    recent = base.tail(lookback)
+    support = float(recent["low"].rolling(10).min().iloc[-1]) if lookback >= 10 else None
+    resistance = float(recent["high"].rolling(10).max().iloc[-1]) if lookback >= 10 else None
+
+    stance = "Neutral"
+    conviction = int(abs(prob_buy - prob_sell) * 100)
+    if trend_up and prob_buy >= 0.55:
+        stance = "Bullish"
+    elif trend_down and prob_sell >= 0.55:
+        stance = "Bearish"
+
+    entry_min = entry_max = stop = None
+    targets: list[float] = []
+    if price and atr_val:
+        if stance == "Bullish":
+            entry_min = price - 0.5 * atr_val
+            entry_max = price
+            stop = price - 2.0 * atr_val
+            targets = [price + 1.5 * atr_val, price + 3.0 * atr_val, price + 4.5 * atr_val]
+        elif stance == "Bearish":
+            entry_min = price
+            entry_max = price + 0.5 * atr_val
+            stop = price + 2.0 * atr_val
+            targets = [price - 1.5 * atr_val, price - 3.0 * atr_val, price - 4.5 * atr_val]
+
+    notes = []
+    if trend == "Sideways":
+        notes.append("HTF sideways (ADX<20): prefer mean-revert/scalp, avoid aggressive trend entries.")
+    if support and resistance:
+        notes.append(f"Key levels – Support: {support:.2f} | Resistance: {resistance:.2f}")
+
+    return {
+        "stance": stance,
+        "conviction": conviction,
+        "setup_type": "Trend" if trend != "Sideways" else "Range",
+        "plan": {
+            "entry_zone": [round(entry_min, 2) if entry_min else None, round(entry_max, 2) if entry_max else None],
+            "stop": round(stop, 2) if stop else None,
+            "targets": [round(t, 2) for t in targets],
+            "size_hint": "Risk ≤1–2% per trade; ATR-based stop",
+        },
+        "context": {
+            "htf_trend": f"{trend} (ADX {htf_last['adx']:.0f})",
+            "key_levels": {"support": support, "resistance": resistance},
+        },
+        "probs": {
+            "prob_buy": round(prob_buy, 3),
+            "prob_sell": round(prob_sell, 3),
+            "prob_hold": round(prob_hold, 3),
+            "prob_up": round(prob_up, 3),
+        },
+        "notes": notes,
+    }

@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import StatsCard from "@/components/StatsCard";
+import Skeleton from "@/components/Skeleton";
 import PriceChart from "@/components/PriceChart";
 import {
   fetchBacktest,
   fetchSignal,
   fetchKlines,
   fetchAiSignal,
+  fetchAiAdvice,
   type BacktestStats,
   type Signal,
   type Kline,
@@ -27,22 +29,25 @@ export default function SymbolDetail({ params }: { params: { symbol: string } })
   const [realtimePrice, setRealtimePrice] = useState<number | null>(null);
   const [ai, setAi] = useState<AiSignal | null>(null);
   const [chartHeight, setChartHeight] = useState<number>(380);
+  const [adviceObj, setAdviceObj] = useState<any | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
         setError(null);
-        const [sig, st, ks, aiResp] = await Promise.all([
+        const [sig, st, ks, aiResp, adv] = await Promise.all([
           fetchSignal(symbol, { interval, limit: 500 }),
           fetchBacktest(symbol, { interval, limit }),
           fetchKlines(symbol, { interval, limit: Math.min(500, limit) }),
           fetchAiSignal(symbol, { interval, limit, horizon: 5, threshold: 0.6 }),
+          fetchAiAdvice(symbol, { interval, limit, htf_interval: "4h", horizon: 5 }),
         ]);
         setSignal(sig);
         setStats(st);
         setKlines(ks);
         setAi(aiResp);
+        setAdviceObj(adv);
       } catch (e: any) {
         setError(e?.message || "Error");
       } finally {
@@ -225,14 +230,17 @@ export default function SymbolDetail({ params }: { params: { symbol: string } })
       <h2 style={{ marginTop: 0 }}>{symbol}</h2>
 
       {/* Price Chart */}
-      {klines.length > 0 && (
+      {klines.length > 0 ? (
         <div className='stats__card' style={{ margin: "8px 0 16px" }}>
-          <div className='stats__title'>Biểu đồ giá</div>
           <PriceChart data={klines} resetKey={`${symbol}-${interval}`} height={chartHeight} />
           <div className='fullscreen-hint'>
             Gợi ý: Dùng nút Fullscreen để xem toàn màn hình; trên mobile, xoay ngang để tối ưu hiển
             thị.
           </div>
+        </div>
+      ) : (
+        <div className='stats__card' style={{ margin: "8px 0 16px" }}>
+          <Skeleton height={chartHeight} />
         </div>
       )}
 
@@ -277,7 +285,21 @@ export default function SymbolDetail({ params }: { params: { symbol: string } })
           </select>
         </label>
       </div>
-      {loading && <div>Loading…</div>}
+      {loading && (
+        <div style={{ display: "grid", gap: 16 }}>
+          <div className='stats'>
+            <Skeleton height={60} />
+          </div>
+          <div className='stats'>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} height={72} />
+            ))}
+          </div>
+          <div className='stats__card'>
+            <Skeleton height={120} />
+          </div>
+        </div>
+      )}
       {error && <div style={{ color: "#ef4444" }}>{error}</div>}
       {!loading && !error && (
         <div style={{ display: "grid", gap: 16 }}>
@@ -391,6 +413,40 @@ export default function SymbolDetail({ params }: { params: { symbol: string } })
               {advice}
             </pre>
           </div>
+
+          {adviceObj && (
+            <div className='stats__card'>
+              <div className='stats__title'>AI Plan</div>
+              <div className='stats__value' style={{ lineHeight: 1.6 }}>
+                <div>
+                  <strong>Stance</strong>: {adviceObj.stance} • <strong>Conviction</strong>:{" "}
+                  {adviceObj.conviction}% • <strong>Setup</strong>: {adviceObj.setup_type}
+                </div>
+                <div>
+                  <strong>Entry</strong>:{" "}
+                  {adviceObj.plan.entry_zone?.filter(Boolean).join(" – ") || "-"} •{" "}
+                  <strong>Stop</strong>: {adviceObj.plan.stop ?? "-"} • <strong>Targets</strong>:{" "}
+                  {adviceObj.plan.targets?.join(", ")}
+                </div>
+                <div>
+                  <strong>HTF</strong>: {adviceObj.context.htf_trend} • <strong>Levels</strong>: S{" "}
+                  {adviceObj.context.key_levels.support ?? "-"} / R{" "}
+                  {adviceObj.context.key_levels.resistance ?? "-"}
+                </div>
+                <div>
+                  <strong>Probs</strong>: BUY {adviceObj.probs.prob_buy} • SELL{" "}
+                  {adviceObj.probs.prob_sell} • HOLD {adviceObj.probs.prob_hold}
+                </div>
+                {adviceObj.notes?.length ? (
+                  <ul style={{ margin: "6px 0 0 18px" }}>
+                    {adviceObj.notes.map((n: string, i: number) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </div>
+          )}
 
           {/* Explanations as bullet points */}
           <div className='stats__card'>

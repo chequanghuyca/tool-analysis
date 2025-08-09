@@ -32,6 +32,21 @@ export type AiSignal = {
   prob_hold?: number;
 };
 
+export type AiAdvice = {
+  stance: "Bullish" | "Bearish" | "Neutral";
+  conviction: number;
+  setup_type: "Trend" | "Range";
+  plan: {
+    entry_zone: (number | null)[];
+    stop: number | null;
+    targets: number[];
+    size_hint: string;
+  };
+  context: { htf_trend: string; key_levels: { support: number | null; resistance: number | null } };
+  probs: { prob_buy: number; prob_sell: number; prob_hold: number; prob_up: number };
+  notes: string[];
+};
+
 export async function fetchSymbols(search: string): Promise<SymbolItem[]> {
   const url = new URL(`${API_BASE}/symbols`);
   url.searchParams.set("quote", "USDT");
@@ -100,5 +115,20 @@ export async function fetchAiSignal(
   if (opts?.threshold) url.searchParams.set("threshold", String(opts.threshold));
   const res = await fetch(url.toString(), { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch ai signal");
+  return res.json();
+}
+
+export async function fetchAiAdvice(
+  symbol: string,
+  opts?: { interval?: string; limit?: number; htf_interval?: string; horizon?: number },
+): Promise<AiAdvice> {
+  const url = new URL(`${API_BASE}/ai/advice`);
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("interval", opts?.interval ?? "1h");
+  if (opts?.limit) url.searchParams.set("limit", String(opts.limit));
+  if (opts?.htf_interval) url.searchParams.set("htf_interval", String(opts.htf_interval));
+  if (opts?.horizon) url.searchParams.set("horizon", String(opts.horizon));
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch ai advice");
   return res.json();
 }
